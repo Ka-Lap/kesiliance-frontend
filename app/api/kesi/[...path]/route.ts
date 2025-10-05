@@ -48,9 +48,13 @@ async function forward(method: "GET" | "POST", req: NextRequest, path: string[])
   }
 }
 
-export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
-  return forward("GET", req, params.path);
+// ⬇️ Next.js 15: context.params est maintenant un Promise<{ path: string[] }>
+export async function GET(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  const { path } = await context.params;
+  return forward("GET", req, path);
 }
-export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
-  return forward("POST", req, params.path);
+
+export async function POST(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  const { path } = await context.params;
+  return forward("POST", req, path);
 }
