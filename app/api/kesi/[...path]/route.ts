@@ -1,26 +1,56 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  const base = process.env.BACKEND_URL ?? "https://kesiliance-api.onrender.com";
-  const joined = (params.path || []).join("/");
-  const url = `${base}/${joined}${req.nextUrl.search || ""}`;
+function baseUrl() {
+  return process.env.BACKEND_URL ?? "https://kesiliance-api.onrender.com";
+}
+function buildTargetURL(path: string[], req: NextRequest) {
+  const qs = req.nextUrl.search || "";
+  const joined = (path || []).join("/");
+  return `${baseUrl()}/${joined}${qs}`;
+}
+
+async function forward(method: "GET" | "POST", req: NextRequest, path: string[]) {
+  const url = buildTargetURL(path, req);
+  const headers: Record<string, string> = { "x-api-key": process.env.API_KEY || "" };
+
+  let body: BodyInit | undefined;
+  if (method === "POST") {
+    const ct = req.headers.get("content-type") || "";
+    if (ct.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const fwd = new FormData();
+      for (const [k, v] of form.entries()) {
+        if (v instanceof File) fwd.append(k, v, (v as File).name);
+        else fwd.append(k, String(v));
+      }
+      body = fwd; // laisser fetch gérer le boundary
+    } else {
+      const text = await req.text();
+      body = text;
+      headers["content-type"] = ct || "application/json";
+    }
+  }
 
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "x-api-key": process.env.API_KEY || "" },
-      cache: "no-store",
-    });
-    const text = await res.text();
-    return new NextResponse(text, {
-      status: res.status,
-      headers: { "content-type": res.headers.get("content-type") || "application/json" },
-    });
+    const res = await fetch(url, { method, headers, body, cache: "no-store" });
+    const contentType = res.headers.get("content-type") || "";
+    const buf = await res.arrayBuffer();
+    const extra: Record<string, string> = { "content-type": contentType };
+    const cd = res.headers.get("content-disposition");
+    if (cd) extra["content-disposition"] = cd;
+    return new NextResponse(buf, { status: res.status, headers: extra });
   } catch (e: any) {
-    console.error("Proxy GET error:", e);
-    return NextResponse.json({ error: "Proxy GET failed", message: e?.message || String(e), url }, { status: 502 });
+    return NextResponse.json(
+      { error: "Proxy error", message: e?.message || String(e), target: url },
+      { status: 502 }
+    );
   }
+}
+
+export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
+  return forward("GET", req, params.path);
+}
+export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
+  return forward("POST", req, params.path);
 }
