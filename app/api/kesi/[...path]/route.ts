@@ -24,7 +24,7 @@ async function forward(method: "GET" | "POST", req: NextRequest, path: string[])
         if (v instanceof File) fwd.append(k, v, (v as File).name);
         else fwd.append(k, String(v));
       }
-      body = fwd; // laisser fetch gérer le boundary
+      body = fwd; // boundary auto
     } else {
       const text = await req.text();
       body = text;
@@ -48,13 +48,13 @@ async function forward(method: "GET" | "POST", req: NextRequest, path: string[])
   }
 }
 
-// ⬇️ Next.js 15: context.params est maintenant un Promise<{ path: string[] }>
-export async function GET(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+// ✅ Next 15: context.params est un Promise — on prend `any` et on await
+export async function GET(req: NextRequest, context: any) {
   const { path } = await context.params;
   return forward("GET", req, path);
 }
 
-export async function POST(req: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+export async function POST(req: NextRequest, context: any) {
   const { path } = await context.params;
   return forward("POST", req, path);
 }
